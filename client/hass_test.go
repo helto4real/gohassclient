@@ -2,7 +2,7 @@ package client_test
 
 import (
     "fmt"
-    "io/ioutil"
+    "os"
     "strconv"
     "strings"
     "sync/atomic"
@@ -218,7 +218,7 @@ func (a *fakeConnected) Read() ([]byte, bool) {
 
     if a.start {
         // Fake just connected
-        resp, _ := ioutil.ReadFile("testdata/auth_required.json")
+        resp, _ := os.ReadFile("testdata/auth_required.json")
         a.start = false
         return resp, true
     }
@@ -228,7 +228,7 @@ func (a *fakeConnected) Read() ([]byte, bool) {
             return nil, false
         }
         if strings.Contains(sendString, "auth") {
-            resp, _ := ioutil.ReadFile("testdata/auth_ok.json")
+            resp, _ := os.ReadFile("testdata/auth_ok.json")
             return resp, true
         }
 
@@ -238,19 +238,19 @@ func (a *fakeConnected) Read() ([]byte, bool) {
         }
         msgType, _ := sendMap["type"].(string)
         if msgType == "get_config" {
-            resp, _ := ioutil.ReadFile("testdata/result_config.json")
+            resp, _ := os.ReadFile("testdata/result_config.json")
             id := strconv.FormatInt(sendMap["id"].(int64), 10)
             return replaceId(resp, "123456789", id), true
         } else if msgType == "get_states" {
-            resp, _ := ioutil.ReadFile("testdata/result_states.json")
+            resp, _ := os.ReadFile("testdata/result_states.json")
             id := strconv.FormatInt(sendMap["id"].(int64), 10)
             return replaceId(resp, "123456789", id), true
         } else if msgType == "subscribe_events" {
-            resp, _ := ioutil.ReadFile("testdata/result_msg.json")
+            resp, _ := os.ReadFile("testdata/result_msg.json")
             id := strconv.FormatInt(sendMap["id"].(int64), 10)
             return replaceId(resp, "123456789", id), true
         } else if msgType == "call_service" {
-            resp, _ := ioutil.ReadFile("testdata/result_msg.json")
+            resp, _ := os.ReadFile("testdata/result_msg.json")
             id := strconv.FormatInt(sendMap["id"].(int64), 10)
             atomic.AddInt64(&a.nrOfCallService, 1)
             return replaceId(resp, "123456789", id), true
@@ -270,11 +270,11 @@ func (a *fakeConnected) IsClosed() bool {
 }
 
 func (a *fakeConnected) SimulateNewEntityEvent() {
-    esp, _ := ioutil.ReadFile("testdata/event.json")
+    esp, _ := os.ReadFile("testdata/event.json")
     a.eventChannel <- esp
 }
 func (a *fakeConnected) SimulateCallServiceEvent() {
-    esp, _ := ioutil.ReadFile("testdata/service_event.json")
+    esp, _ := os.ReadFile("testdata/service_event.json")
     a.eventChannel <- esp
 }
 func replaceId(response []byte, old string, new string) []byte {
