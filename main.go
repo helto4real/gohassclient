@@ -19,7 +19,6 @@ func main() {
     cl := c.NewHassClient()
 
     go cl.Start("localhost:8124", false, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIwNWYyOGFlZjkzYWU0MDUwODljMTYyYWNmNzZmNDk2MCIsImlhdCI6MTcwOTc4OTQ2OSwiZXhwIjoyMDI1MTQ5NDY5fQ.BqUndJESpV8jLTZO8aAT2uqDxmCb5cR0ZhJDewHQPAY")
-
     timeTickCheckState := time.Tick(5 * time.Second)
     // timeTickToggle := time.Tick(10 * time.Second)
     for {
