@@ -1,5 +1,11 @@
 # General
 
-# Testing
-For complete testing use the integration flag.
-`go test -v ./... -integration`
+## Tests
+```bash
+go test -v ./...
+```
+
+Run integration tests
+```bash
+go tests -v ./... -integration
+```

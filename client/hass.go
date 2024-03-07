@@ -1,18 +1,18 @@
 package client
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "net/url"
 
-	"time"
+    "time"
 
-	"github.com/helto4real/go-hassclient/internal/wsocket"
-	ws "github.com/helto4real/go-hassclient/internal/wsocket"
-	"github.com/sirupsen/logrus"
+    "github.com/helto4real/go-hassclient/internal/wsocket"
+    ws "github.com/helto4real/go-hassclient/internal/wsocket"
+    "github.com/sirupsen/logrus"
 )
 
 var log *logrus.Entry
@@ -21,280 +21,280 @@ var log *logrus.Entry
 type connectWSFunction func(host, path string, ssl bool) ws.Connected
 
 var (
-	getConnected    connectWSFunction = connectWS
-	connectionDelay                   = time.Duration(5)
+    getConnected    connectWSFunction = connectWS
+    connectionDelay                   = time.Duration(5)
 )
 
 // HomeAssistant interface represents Home Assistant
 type HomeAssistant interface {
-	// Start daemon only use in main
-	Start(host string, ssl bool, token string) bool
-	// Stop daemon only use in main
-	Stop()
-	GetEntity(entity string) (*HassEntity, bool)
-	SetEntity(entity *HassEntity) bool
-	CallService(service string, serviceData map[string]string)
-	GetHassChannel() chan interface{}
-	GetStatusChannel() chan bool
-	GetConfig() *HassConfig
+    // Start daemon only use in main
+    Start(host string, ssl bool, token string) bool
+    // Stop daemon only use in main
+    Stop()
+    GetEntity(entity string) (*HassEntity, bool)
+    SetEntity(entity *HassEntity) bool
+    CallService(service string, serviceData map[string]string)
+    GetHassChannel() chan interface{}
+    GetStatusChannel() chan bool
+    GetConfig() *HassConfig
 }
 
 // HassHTTPPoster interface is for mocking the http post to Hass API
 type HassHTTPPoster interface {
-	HassHTTPPostAPI(url string, data []byte) bool
+    HassHTTPPostAPI(url string, data []byte) bool
 }
 
 // homeAssistantPlatform implements integration with Home Assistant
 type homeAssistantPlatform struct {
-	wsClient          ws.Connected
-	wsID              int64
-	getStateID        int64
-	getConfigID       int64
-	cancelHassLoop    context.CancelFunc
-	context           context.Context
-	token             string
-	HassChannel       chan interface{}
-	HassStatusChannel chan bool
-	list              List
-	host              string
-	ssl               bool
-	stopped           bool
-	httpClient        *http.Client
-	HassConfig        *HassConfig
-	poster            HassHTTPPoster
+    wsClient          ws.Connected
+    wsID              int64
+    getStateID        int64
+    getConfigID       int64
+    cancelHassLoop    context.CancelFunc
+    context           context.Context
+    token             string
+    HassChannel       chan interface{}
+    HassStatusChannel chan bool
+    list              List
+    host              string
+    ssl               bool
+    stopped           bool
+    httpClient        *http.Client
+    HassConfig        *HassConfig
+    poster            HassHTTPPoster
 }
 
 // ServiceDataItem is used for a convenient way to provide service data in a variadic function CallService
 type ServiceDataItem struct {
-	Name  string
-	Value string
+    Name  string
+    Value string
 }
 
 // NewHassClientFakeConnection only used for mocking real connectio to Hass
 func NewHassClientFakeConnection(fakeConnection wsocket.Connected, fakePoster HassHTTPPoster) HomeAssistant {
-	client := newHassClient()
-	client.wsClient = fakeConnection
-	client.poster = fakePoster
-	return client
+    client := newHassClient()
+    client.wsClient = fakeConnection
+    client.poster = fakePoster
+    return client
 }
 
 func newHassClient() *homeAssistantPlatform {
-	context, cancelHassLoop := context.WithCancel(context.Background())
-	return &homeAssistantPlatform{
-		wsID:              1,
-		context:           context,
-		cancelHassLoop:    cancelHassLoop,
-		HassChannel:       make(chan interface{}, 10),
-		HassStatusChannel: make(chan bool, 2),
-		list:              NewEntityList(),
-		stopped:           false,
-		HassConfig:        &HassConfig{},
-		httpClient:        &http.Client{}}
+    context, cancelHassLoop := context.WithCancel(context.Background())
+    return &homeAssistantPlatform{
+        wsID:              1,
+        context:           context,
+        cancelHassLoop:    cancelHassLoop,
+        HassChannel:       make(chan interface{}, 10),
+        HassStatusChannel: make(chan bool, 2),
+        list:              NewEntityList(),
+        stopped:           false,
+        HassConfig:        &HassConfig{},
+        httpClient:        &http.Client{}}
 }
 
 // NewHassClient creates a new instance of the Home Assistant client
 func NewHassClient() HomeAssistant {
-	return newHassClient()
+    return newHassClient()
 }
 
 func (a *homeAssistantPlatform) GetConfig() *HassConfig {
-	return a.HassConfig
+    return a.HassConfig
 }
 
 func (a *homeAssistantPlatform) GetHassChannel() chan interface{} {
-	return a.HassChannel
+    return a.HassChannel
 }
 
 func (a *homeAssistantPlatform) GetStatusChannel() chan bool {
-	return a.HassStatusChannel
+    return a.HassStatusChannel
 }
 
 // Start the Home Assistant Client, use nil for fake, only for testing
 func (a *homeAssistantPlatform) Start(host string, ssl bool, token string) bool {
-	a.token = token
-	a.host = host
-	a.ssl = ssl
-	if a.wsClient == nil {
-		a.wsClient = a.connectWithReconnect()
-	}
-	if a.poster == nil {
-		a.poster = a
-	}
+    a.token = token
+    a.host = host
+    a.ssl = ssl
+    if a.wsClient == nil {
+        a.wsClient = a.connectWithReconnect()
+    }
+    if a.poster == nil {
+        a.poster = a
+    }
 
-	for {
-		select {
-		case <-a.context.Done():
-			return false
-		default:
-			message, ok := a.wsClient.Read()
+    for {
+        select {
+        case <-a.context.Done():
+            return false
+        default:
+            message, ok := a.wsClient.Read()
 
-			if !ok {
-				if a.stopped {
-					return true // Return if stopped
-				}
-				log.Println("No connection to Hass, retrying in 5 seconds...")
-				// Delay 5 seconds before reconnecting
-				if a.delay(connectionDelay) {
-					return true
-				}
+            if !ok {
+                if a.stopped {
+                    return true // Return if stopped
+                }
+                log.Println("No connection to Hass, retrying in 5 seconds...")
+                // Delay 5 seconds before reconnecting
+                if a.delay(connectionDelay) {
+                    return true
+                }
 
-				a.wsClient = a.connectWithReconnect()
-				if a.wsClient == nil {
-					log.Println("Ending service discovery")
-					return false
-				}
-			} else {
-				// s := string(message)
-				// fmt.Println(s)
-				var result Result
-				err := json.Unmarshal(message, &result)
-				if err != nil {
-					log.Error(err)
-				} else {
-					go a.handleMessage(result)
-				}
-			}
+                a.wsClient = a.connectWithReconnect()
+                if a.wsClient == nil {
+                    log.Println("Ending service discovery")
+                    return false
+                }
+            } else {
+                // s := string(message)
+                // fmt.Println(s)
+                var result Result
+                err := json.Unmarshal(message, &result)
+                if err != nil {
+                    log.Error(err)
+                } else {
+                    go a.handleMessage(result)
+                }
+            }
 
-		}
+        }
 
-	}
+    }
 
 }
 func (a *homeAssistantPlatform) delay(seconds time.Duration) bool {
 
-	select {
-	case <-time.After(seconds * time.Second):
-		return false
-	case <-a.context.Done():
-		return true
-	}
+    select {
+    case <-time.After(seconds * time.Second):
+        return false
+    case <-a.context.Done():
+        return true
+    }
 }
 
 // Stop the Home Assistant client
 func (a *homeAssistantPlatform) Stop() {
-	a.stopped = true
-	a.cancelHassLoop()
-	if a.wsClient != nil {
-		a.wsClient.Close()
-	}
-	close(a.HassChannel)
-	close(a.HassStatusChannel)
+    a.stopped = true
+    a.cancelHassLoop()
+    if a.wsClient != nil {
+        a.wsClient.Close()
+    }
+    close(a.HassChannel)
+    close(a.HassStatusChannel)
 }
 
 // connects to the websocket
 func connectWS(host, path string, ssl bool) ws.Connected {
-	return ws.ConnectWS(host, path, ssl)
+    return ws.ConnectWS(host, path, ssl)
 }
 func (a *homeAssistantPlatform) connectWithReconnect() ws.Connected {
 
-	var client ws.Connected
+    var client ws.Connected
 
-	for {
-		if a.host == "hassio" {
-			client = getConnected(a.host, "/homeassistant/websocket", false)
+    for {
+        if a.host == "hassio" {
+            client = getConnected(a.host, "/homeassistant/websocket", false)
 
-		} else {
-			client = getConnected(a.host, "/api/websocket", a.ssl)
-		}
+        } else {
+            client = getConnected(a.host, "/api/websocket", a.ssl)
+        }
 
-		if client == nil {
-			a.HassStatusChannel <- false
-			log.Println("No connection to Hass, retrying in 5 seconds...")
-			// Fail to connect wait to connect again for 5 seconds
-			if a.delay(connectionDelay) {
-				return nil
-			}
+        if client == nil {
+            a.HassStatusChannel <- false
+            log.Println("No connection to Hass, retrying in 5 seconds...")
+            // Fail to connect wait to connect again for 5 seconds
+            if a.delay(connectionDelay) {
+                return nil
+            }
 
-		} else {
-			return client
-		}
-	}
+        } else {
+            return client
+        }
+    }
 }
 
 // GetEntity returns the entity
 func (a *homeAssistantPlatform) GetEntity(entity string) (*HassEntity, bool) {
-	return a.list.GetEntity(entity)
+    return a.list.GetEntity(entity)
 }
 func (a *homeAssistantPlatform) HassHTTPPostAPI(url string, data []byte) bool {
-	req, err := http.NewRequest("POST", url, bytes.NewReader(data))
-	if err == nil {
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+a.token)
+    req, err := http.NewRequest("POST", url, bytes.NewReader(data))
+    if err == nil {
+        req.Header.Set("Content-Type", "application/json")
+        req.Header.Set("Authorization", "Bearer "+a.token)
 
-		resp, err := a.httpClient.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == 200 || resp.StatusCode == 201 {
-				return true
-			}
-		}
-	}
-	return false
+        resp, err := a.httpClient.Do(req)
+        if err == nil {
+            defer resp.Body.Close()
+            if resp.StatusCode == 200 || resp.StatusCode == 201 {
+                return true
+            }
+        }
+    }
+    return false
 }
 
 // SetEntity sets the entity to the map
 func (a *homeAssistantPlatform) SetEntity(entity *HassEntity) bool {
-	var scheme = "http"
-	if a.ssl == true {
-		scheme = "https"
-	}
-	var u url.URL
-	if a.host == "hassio" {
-		u = url.URL{Scheme: scheme, Host: a.host, Path: "/homeassistant/api/states/" + url.PathEscape(entity.ID)}
-	} else {
-		u = url.URL{Scheme: scheme, Host: a.host, Path: "/api/states/" + url.PathEscape(entity.ID)}
-	}
+    var scheme = "http"
+    if a.ssl == true {
+        scheme = "https"
+    }
+    var u url.URL
+    if a.host == "hassio" {
+        u = url.URL{Scheme: scheme, Host: a.host, Path: "/homeassistant/api/states/" + url.PathEscape(entity.ID)}
+    } else {
+        u = url.URL{Scheme: scheme, Host: a.host, Path: "/api/states/" + url.PathEscape(entity.ID)}
+    }
 
-	stateData := SetStateData{State: entity.New.State, Attributes: entity.New.Attributes}
-	b, err := json.Marshal(stateData)
+    stateData := SetStateData{State: entity.New.State, Attributes: entity.New.Attributes}
+    b, err := json.Marshal(stateData)
 
-	if err != nil {
-		log.Errorf("Failed to marshal state data from entity %s, data : %v", entity, err)
-		return false
-	}
+    if err != nil {
+        log.Errorf("Failed to marshal state data from entity %s, data : %v", entity, err)
+        return false
+    }
 
-	return a.poster.HassHTTPPostAPI(u.String(), b)
+    return a.poster.HassHTTPPostAPI(u.String(), b)
 
 }
 
-//CallService makes a service call through the Home Assistant API
+// CallService makes a service call through the Home Assistant API
 func (a *homeAssistantPlatform) CallService(service string, serviceData map[string]string) {
-	a.wsID = a.wsID + 1
+    a.wsID = a.wsID + 1
 
-	s := map[string]interface{}{
-		"id":           a.wsID,
-		"type":         "call_service",
-		"domain":       "homeassistant",
-		"service":      service,
-		"service_data": serviceData}
+    s := map[string]interface{}{
+        "id":           a.wsID,
+        "type":         "call_service",
+        "domain":       "homeassistant",
+        "service":      service,
+        "service_data": serviceData}
 
-	a.wsClient.SendMap(s)
+    a.wsClient.SendMap(s)
 
 }
 
 // Send a generic message to Home Assistant websocket API
 func (a *homeAssistantPlatform) sendMessage(messageType string) {
-	a.wsID = a.wsID + 1
-	s := map[string]interface{}{
-		"id":   a.wsID,
-		"type": messageType}
+    a.wsID = a.wsID + 1
+    s := map[string]interface{}{
+        "id":   a.wsID,
+        "type": messageType}
 
-	if messageType == "get_states" {
-		a.getStateID = a.wsID
-	} else if messageType == "get_config" {
-		a.getConfigID = a.wsID
-	}
-	a.wsClient.SendMap(s)
+    if messageType == "get_states" {
+        a.getStateID = a.wsID
+    } else if messageType == "get_config" {
+        a.getConfigID = a.wsID
+    }
+    a.wsClient.SendMap(s)
 
 }
 
 func (a *homeAssistantPlatform) subscribeEventsStateChanged() {
-	a.wsID = a.wsID + 1
-	s := map[string]interface{}{
-		"id":   a.wsID,
-		"type": "subscribe_events"} //"event_type": "state_changed"
+    a.wsID = a.wsID + 1
+    s := map[string]interface{}{
+        "id":   a.wsID,
+        "type": "subscribe_events"} //"event_type": "state_changed"
 
-	a.wsClient.SendMap(s)
+    a.wsClient.SendMap(s)
 
 }
 
@@ -311,90 +311,90 @@ func (a *homeAssistantPlatform) subscribeEventsStateChanged() {
 
 func (a *homeAssistantPlatform) handleMessage(message Result) {
 
-	if message.MessageType == "auth_required" {
-		//	log.Print("message->: ", message)
-		log.Debugln("Authorizing with Home Assistant...")
+    if message.MessageType == "auth_required" {
+        //	log.Print("message->: ", message)
+        log.Debugln("Authorizing with Home Assistant...")
 
-		a.wsClient.SendString("{\"type\": \"auth\",\"access_token\": \"" + a.token + "\"}")
-	} else if message.MessageType == "auth_ok" {
-		//		log.Print("message->: ", message)
-		log.Debugln("Autorization ok...")
-		a.sendMessage("get_config")
+        a.wsClient.SendString("{\"type\": \"auth\",\"access_token\": \"" + a.token + "\"}")
+    } else if message.MessageType == "auth_ok" {
+        //		log.Print("message->: ", message)
+        log.Debugln("Autorization ok...")
+        a.sendMessage("get_config")
 
-	} else if message.MessageType == "result" {
+    } else if message.MessageType == "result" {
 
-		if message.Id == a.getStateID {
-			log.Debugf("Got all states, getting events [%v]", message.Id)
-			results := message.Result.([]interface{})
-			for _, data := range results {
-				item := data.(map[string]interface{})
-				lastUpdated, _ := time.Parse(time.RFC3339, item["last_updated"].(string))
-				lastChanged, _ := time.Parse(time.RFC3339, item["last_changed"].(string))
-				new := HassEntityState{
-					LastUpdated: lastUpdated,
-					LastChanged: lastChanged,
-					State:       item["state"].(string),
-					Attributes:  item["attributes"].(map[string]interface{})}
+        if message.Id == a.getStateID {
+            log.Debugf("Got all states, getting events [%v]", message.Id)
+            results := message.Result.([]interface{})
+            for _, data := range results {
+                item := data.(map[string]interface{})
+                lastUpdated, _ := time.Parse(time.RFC3339, item["last_updated"].(string))
+                lastChanged, _ := time.Parse(time.RFC3339, item["last_changed"].(string))
+                new := HassEntityState{
+                    LastUpdated: lastUpdated,
+                    LastChanged: lastChanged,
+                    State:       item["state"].(string),
+                    Attributes:  item["attributes"].(map[string]interface{})}
 
-				old := HassEntityState{}
-				newHassEntity := NewHassEntity(item["entity_id"].(string), item["entity_id"].(string), old, new)
-				a.list.SetEntity(newHassEntity)
-				a.HassChannel <- *newHassEntity
+                old := HassEntityState{}
+                newHassEntity := NewHassEntity(item["entity_id"].(string), item["entity_id"].(string), old, new)
+                a.list.SetEntity(newHassEntity)
+                a.HassChannel <- *newHassEntity
 
-			}
+            }
 
-			//			a.subscribeEventsCallService()
-			a.subscribeEventsStateChanged()
-			log.Info("Home Assistant integration ready!")
-			a.HassStatusChannel <- true
-		} else if message.Id == a.getConfigID {
+            //			a.subscribeEventsCallService()
+            a.subscribeEventsStateChanged()
+            log.Info("Home Assistant integration ready!")
+            a.HassStatusChannel <- true
+        } else if message.Id == a.getConfigID {
 
-			result := message.Result.(map[string]interface{})
-			a.HassConfig.Latitude = result["latitude"].(float64)
-			a.HassConfig.Longitude = result["longitude"].(float64)
-			a.HassConfig.Elevation = result["elevation"].(float64)
+            result := message.Result.(map[string]interface{})
+            a.HassConfig.Latitude = result["latitude"].(float64)
+            a.HassConfig.Longitude = result["longitude"].(float64)
+            a.HassConfig.Elevation = result["elevation"].(float64)
 
-			a.sendMessage("get_states")
+            a.sendMessage("get_states")
 
-		}
-	} else if message.MessageType == "event" {
-		if message.Event.EventType == "state_changed" {
-			data := message.Event.Data
-			log.Tracef("message->: %s=%s", data.EntityId, data.NewState.State)
-			lastUpdated, _ := time.Parse(time.RFC3339, data.NewState.LastUpdated)
-			lastChanged, _ := time.Parse(time.RFC3339, data.NewState.LastChanged)
-			new := HassEntityState{
-				LastUpdated: lastUpdated,
-				LastChanged: lastChanged,
-				State:       fmt.Sprint(data.NewState.State),
-				Attributes:  data.NewState.Attributes}
-			lastUpdated, _ = time.Parse(time.RFC3339, data.OldState.LastUpdated)
-			lastChanged, _ = time.Parse(time.RFC3339, data.OldState.LastChanged)
+        }
+    } else if message.MessageType == "event" {
+        if message.Event.EventType == "state_changed" {
+            data := message.Event.Data
+            log.Tracef("message->: %s=%s", data.EntityId, data.NewState.State)
+            lastUpdated, _ := time.Parse(time.RFC3339, data.NewState.LastUpdated)
+            lastChanged, _ := time.Parse(time.RFC3339, data.NewState.LastChanged)
+            new := HassEntityState{
+                LastUpdated: lastUpdated,
+                LastChanged: lastChanged,
+                State:       fmt.Sprint(data.NewState.State),
+                Attributes:  data.NewState.Attributes}
+            lastUpdated, _ = time.Parse(time.RFC3339, data.OldState.LastUpdated)
+            lastChanged, _ = time.Parse(time.RFC3339, data.OldState.LastChanged)
 
-			old := HassEntityState{
-				LastUpdated: lastUpdated,
-				LastChanged: lastChanged,
-				State:       fmt.Sprint(data.OldState.State),
-				Attributes:  data.OldState.Attributes}
+            old := HassEntityState{
+                LastUpdated: lastUpdated,
+                LastChanged: lastChanged,
+                State:       fmt.Sprint(data.OldState.State),
+                Attributes:  data.OldState.Attributes}
 
-			newHassEntity := NewHassEntity(data.EntityId, data.EntityId, old, new)
-			a.list.SetEntity(newHassEntity)
-			a.HassChannel <- *newHassEntity
-		} else if message.Event.EventType == "call_service" {
+            newHassEntity := NewHassEntity(data.EntityId, data.EntityId, old, new)
+            a.list.SetEntity(newHassEntity)
+            a.HassChannel <- *newHassEntity
+        } else if message.Event.EventType == "call_service" {
 
-			timeFired, _ := time.Parse(time.RFC3339, message.Event.TimeFired)
-			newHassCallServiceEvent := NewHassCallServiceEvent(timeFired, message.Event.Data.Domain,
-				message.Event.Data.Service, message.Event.Data.ServiceData)
-			a.HassChannel <- *newHassCallServiceEvent
+            timeFired, _ := time.Parse(time.RFC3339, message.Event.TimeFired)
+            newHassCallServiceEvent := NewHassCallServiceEvent(timeFired, message.Event.Data.Domain,
+                message.Event.Data.Service, message.Event.Data.ServiceData)
+            a.HassChannel <- *newHassCallServiceEvent
 
-		}
+        }
 
-	}
+    }
 
 }
 
 func init() {
 
-	log = logrus.WithField("prefix", "hassclient")
+    log = logrus.WithField("prefix", "hassclient")
 
 }
